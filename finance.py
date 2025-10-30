@@ -4,16 +4,15 @@ import numpy as np
 
 def generate_financials(basic_inputs: dict):
     """
-    Given user inputs, generate a simple 5-year CAPEX/OPEX/Revenue/Profit table.
-    Returns a pandas DataFrame and the CAPEX/OPEX breakdown dict.
+    Generate simple 5-year financial projection for DPR.
+    Includes Revenue, Variable Cost, Fixed Cost, EBITDA.
+    Returns: (DataFrame, meta dict)
     """
-    # Basic conservative defaults
     capacity = basic_inputs.get("capacity") or 1000
     currency = basic_inputs.get("currency", "INR")
     year_count = 5
 
-    # Simple assumptions - make these configurable or compute via ML
-    price_per_unit = basic_inputs.get("additional", {}).get("price_per_unit", 100)  # per unit revenue
+    price_per_unit = basic_inputs.get("additional", {}).get("price_per_unit", 100)
     variable_cost_per_unit = basic_inputs.get("additional", {}).get("variable_cost", 40)
     fixed_annual_overheads = basic_inputs.get("additional", {}).get("fixed_annual", 200000)
 
@@ -32,7 +31,7 @@ def generate_financials(basic_inputs: dict):
     })
     df.set_index("Year", inplace=True)
 
-    capex = basic_inputs.get("additional", {}).get("capex", 5_000_000)  # default
+    capex = basic_inputs.get("additional", {}).get("capex", 5_000_000)
     opex_breakdown = {
         "labor": basic_inputs.get("additional", {}).get("labor", 500000),
         "maintenance": basic_inputs.get("additional", {}).get("maintenance", 200000),
