@@ -1,26 +1,36 @@
 # backend/main.py
+
 import os
-import io
 import uuid
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from generation import generate_dpr_package
 from dotenv import load_dotenv
+import uvicorn
 
-load_dotenv()  # expects OPENAI_API_KEY in .env if using OpenAI
+# Internal module imports
+from generation import generate_dpr_package
 
-app = FastAPI(title="AI DPR Architect - Backend")
+# Load environment variables (.env must include GEMINI_API_KEY or OPENAI_API_KEY)
+load_dotenv()
 
+# ---------------- APP CONFIG ----------------
+app = FastAPI(
+    title="AI DPR Architect - Backend",
+    description="Backend service that generates Detailed Project Reports (DPRs) using AI and financial modeling.",
+    version="1.0.0"
+)
+
+# Enable CORS (allow all origins for now; restrict in production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # change in production
+    allow_origins=["*"],           # Replace with your frontend domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ---------------- REQUEST MODEL ----------------
 class ProjectRequest(BaseModel):
     title: str
     short_description: str
@@ -29,19 +39,43 @@ class ProjectRequest(BaseModel):
     currency: str = "INR"
     additional: dict | None = None
 
+
+# ---------------- ROUTES ----------------
+@app.get("/")
+def root():
+    """Health check / root endpoint."""
+    return {"message": "✅ AI DPR Architect Backend is running!"}
+
+
 @app.post("/generate")
 def generate_project_dpr(req: ProjectRequest):
     """
-    Main endpoint: Accepts project brief and returns links to generated files
-    (or base64 content). Here we save files to disk and return filenames.
+    Main endpoint: Accepts project brief and returns generated file paths.
+    It calls the DPR generator which produces DOCX, PDF, and Excel reports.
     """
     try:
-        # generate files; returns dict with file paths
         result = generate_dpr_package(req.dict())
-        return result
+        return {
+            "status": "success",
+            "message": "DPR generated successfully.",
+            "data": result
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"❌ Error generating DPR: {str(e)}"
+        )
 
+
+# ---------------- MAIN ENTRY ----------------
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Host and port configuration (can be overridden via .env)
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", 8000))
+
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=True
+    )

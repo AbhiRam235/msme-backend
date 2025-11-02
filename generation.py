@@ -14,8 +14,13 @@ import pandas as pd
 from templates import PROJECT_TEMPLATES
 from finance import generate_financials
 import google.generativeai as genai
+import os
+import requests
+from typing import Dict
 
-MODEL = "gemini-2.0-flash-lite"
+
+MODEL = "gemini-2.0-flash"
+
 OUTPUT_DIR = Path("generated")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -72,26 +77,51 @@ def fetch_external_data_stub(location: str) -> dict:
 
 
 # ---------------- SECTION GENERATION ----------------
-def generate_sections_with_gemini(sections: list, project_payload: dict) -> Dict[str, str]:
-    """Generate content for each DPR section using Gemini API."""
+
+def generate_sections_with_gemini(sections: list, project_payload: dict) -> Dict[str, dict]:
+    """
+    Generate content for each DPR section using Gemini (English)
+    and translate both section title & text into Telugu using LibreTranslate.
+    
+    Returns:
+    {
+        "Introduction": {
+            "english_title": "Introduction",
+            "telugu_title": "పరిచయం",
+            "english_text": "This report covers ...",
+            "telugu_text": "ఈ నివేదిక లో ..."
+        },
+        ...
+    }
+    """
     content = {}
     api_key = os.getenv("GEMINI_API_KEY")
 
+    # Fallback if Gemini key not found
     if not api_key:
-        print("⚠️ API_KEY not found — using placeholder text.")
+        print("⚠️ GEMINI_API_KEY not found — using placeholder text and translation.")
         for sec in sections:
-            content[sec] = (
-                f"[Auto-generated section: {sec}]\n\n"
+            english_text = (
+                f"[Auto-generated placeholder for '{sec}']\n\n"
                 f"Project: {project_payload.get('title')}\n"
                 f"Description: {project_payload.get('short_description')}"
             )
+            telugu_title = translate_text_libre(sec, target_lang="te")
+            telugu_text = translate_text_libre(english_text, target_lang="te")
+            content[sec] = {
+                "english_title": sec,
+                "telugu_title": telugu_title,
+                "english_text": english_text,
+                "telugu_text": telugu_text
+            }
         return content
 
+    # Configure Gemini
     genai.configure(api_key=api_key)
 
     for sec in sections:
         prompt = f"""
-        You are creating content for a Detailed Project Report (DPR).
+        You are creating a section for a Detailed Project Report (DPR).
 
         Project title: {project_payload.get('title')}
         Short description: {project_payload.get('short_description')}
@@ -99,22 +129,52 @@ def generate_sections_with_gemini(sections: list, project_payload: dict) -> Dict
 
         Generate a professional section titled "{sec}" (~300-400 words).
         - Include clear **subtitles** for subtopics (use bold markers like **Subtitle:**).
-        - Include bullet points where useful.
-        - Avoid markdown syntax like ## or ###.
+        - Include bullet points where helpful.
+        - Avoid markdown headers (#, ##, etc).
+        - Keep tone formal and factual.
         """
 
         try:
             model = genai.GenerativeModel(MODEL)
             response = model.generate_content(prompt)
-            text = response.text.strip()
+            english_text = response.text.strip() if response.text else "[Empty content]"
         except Exception as e:
             print(f"❌ Gemini error for section '{sec}':", e)
-            text = f"[Error generating section: {sec}]\n\n{e}"
+            english_text = f"[Error generating section: {sec}]\n\n{e}"
 
-        content[sec] = text
+        # Translate both title and text
+        telugu_title = translate_text_libre(sec, target_lang="te")
+        telugu_text = translate_text_libre(english_text, target_lang="te")
 
+        # Store everything
+        content[sec] = {
+            "english_title": sec,
+            "telugu_title": telugu_title,
+            "english_text": english_text,
+            "telugu_text": telugu_text
+        }
+    print(content)
     return content
 
+
+# ---------------- HELPER FUNCTION ----------------
+def translate_text_libre(text: str, target_lang: str = "te") -> str:
+    """Translate given text using free LibreTranslate API."""
+    try:
+        url = "https://libretranslate.de/translate"
+        payload = {
+            "q": text,
+            "source": "en",
+            "target": target_lang,
+            "format": "text"
+        }
+        response = requests.post(url, data=payload, timeout=20)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("translatedText", "[Translation unavailable]")
+    except Exception as e:
+        print(f"⚠️ Translation error ({target_lang}): {e}")
+        return "[Translation failed]"
 
 # ---------------- FINANCIAL PLOT ----------------
 def plot_financials(df: pd.DataFrame, out_png: Path):
